@@ -3,6 +3,8 @@ import hashlib
 
 PASSWORD_LEN = 1048576
 
+RESULT_CACHE = {}
+
 
 def snmpv3_key_from_password(password, engineid, hash_type, hex_output=True):
     key = derive_intermediate_key(password, hash_type)
@@ -12,14 +14,12 @@ def snmpv3_key_from_password(password, engineid, hash_type, hex_output=True):
     return localized_key
 
 
-def get_hash_type(hashname):
-    if hashname == "sha":
-        return "sha1"
-    return hashname
-
-
 def derive_intermediate_key(password, hash_type):
-    hash_type = get_hash_type(hash_type)
+    cache_key = (password, hash_type)
+    cached = RESULT_CACHE.get((password, hash_type), None)
+    if cached is not None:
+        return cached
+
     password = password.encode()
     hash_type = hash_type
     key_hash = hashlib.new(hash_type)
@@ -31,19 +31,21 @@ def derive_intermediate_key(password, hash_type):
     key_hash.update(password[: PASSWORD_LEN % len(password)])
 
     key = key_hash.digest()
+
+    RESULT_CACHE[cache_key] = key
+
     return key
 
 
-def localize_intermediate_key(intermediate_key, engineid, hash_type):
+def localize_intermediate_key(key, engineid, hash_type):
     # localize for the engineid
-    hash_type = get_hash_type(hash_type)
     localized = hashlib.new(hash_type)
 
     if isinstance(engineid, str):
         engineid = bytes.fromhex(engineid.replace(":", ""))
 
-    localized.update(intermediate_key)
+    localized.update(key)
     localized.update(engineid)
-    localized.update(intermediate_key)
+    localized.update(key)
 
     return localized.digest()
